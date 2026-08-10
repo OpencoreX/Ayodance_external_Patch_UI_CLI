@@ -93,17 +93,22 @@ namespace AyodanceID
 
                 if (toggles.Count == 0)
                 {
-                    Console.WriteLine("No feature args given -> applying ALL patches.");
+                    Console.WriteLine("No feature args given -> applying ALL patches + Max Grade.");
                     foreach (PatchFeature feature in Features)
                     {
                         Apply(patcher, feature, enable: true);
                     }
+                    RunGrade(mem);
                 }
                 else if (toggles.TryGetValue("all", out bool allState))
                 {
                     foreach (PatchFeature feature in Features)
                     {
                         Apply(patcher, feature, allState);
+                    }
+                    if (allState)
+                    {
+                        RunGrade(mem);
                     }
                 }
                 else
@@ -135,27 +140,27 @@ namespace AyodanceID
 
         private static void Apply(GamePatcher patcher, PatchFeature feature, bool enable)
         {
+            Console.Write($"[{feature.Name}] progressing....");
             PatchReport report = patcher.Apply(feature, enable);
 
-            Console.WriteLine($"[{feature.Name}]  ({feature.Description})");
+            string status;
             if (enable)
             {
-                Console.WriteLine($"  applied: {report.Applied}, already applied: {report.AlreadyDone}, failed: {report.Failed}");
-                if (report.Applied == 0 && report.AlreadyDone == 0 && report.Failed == 0)
-                {
-                    Console.WriteLine("  Pattern not found. Wrong process / game version, or not in-game yet?");
-                }
+                status = report.Failed > 0
+                    ? $"failed ({report.Failed})"
+                    : report.Applied == 0 && report.AlreadyDone == 0
+                        ? "not found"
+                        : "done";
             }
             else
             {
-                Console.WriteLine($"  restored: {report.Restored}, already original: {report.AlreadyDone}, failed: {report.Failed}");
+                status = report.Failed > 0
+                    ? $"failed ({report.Failed})"
+                    : report.Restored == 0 && report.AlreadyDone == 0
+                        ? "not found"
+                        : "done";
             }
-
-            foreach (nint addr in report.Addresses)
-            {
-                Console.WriteLine($"    0x{addr.ToInt64():X}");
-            }
-            Console.WriteLine();
+            Console.WriteLine($" > {status}");
         }
 
         private static void InteractiveRun()
@@ -187,7 +192,7 @@ namespace AyodanceID
                 string? disableInput = Console.ReadLine();
 
                 List<int> enableSet = string.IsNullOrWhiteSpace(enableInput)
-                    ? Enumerable.Range(0, Features.Count).ToList()
+                    ? Enumerable.Range(0, Features.Count + 1).ToList()
                     : ParseSelection(enableInput, Features.Count + 1);
                 List<int> disableSet = ParseSelection(disableInput, Features.Count + 1);
 
@@ -237,65 +242,25 @@ namespace AyodanceID
 
         private static void RunGrade(MemoryReader mem)
         {
+            Console.Write("[Max Grade] progressing....");
             var scanner = new UserStructScanner(mem);
-            Console.WriteLine();
-            Console.WriteLine("Scanning for User struct (level 1-200, stats 0-100000, aligned pointers)...");
 
             List<nint> candidates = scanner.Scan();
             if (candidates.Count == 0)
             {
-                Console.WriteLine("No User struct found. Is the game at the home / Story screen?");
+                Console.WriteLine(" > not found");
                 return;
             }
 
-            Console.WriteLine();
-            for (int i = 0; i < candidates.Count; i++)
+            int ok = 0;
+            foreach (nint addr in candidates)
             {
-                Console.WriteLine($"  [{i}] struct @ 0x{candidates[i].ToInt64():X}  grade @ 0x{(candidates[i].ToInt64() + UserStructScanner.GradeOffset):X}");
-            }
-
-            Console.WriteLine();
-            Console.WriteLine("Write MAX grade (2610 = 0A 32 00 00) to which candidate? (index, or Enter = all, q = quit)");
-            string? input = Console.ReadLine();
-
-            if (string.Equals(input, "q", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                int ok = 0;
-                foreach (nint addr in candidates)
-                {
-                    if (scanner.WriteMaxGrade(addr))
-                    {
-                        ok++;
-                        Console.WriteLine($"  Wrote 2610 -> grade @ 0x{(addr.ToInt64() + UserStructScanner.GradeOffset):X}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"  FAILED to write @ 0x{(addr.ToInt64() + UserStructScanner.GradeOffset):X}");
-                    }
-                }
-                Console.WriteLine($"Done. {ok}/{candidates.Count} written.");
-            }
-            else if (int.TryParse(input, out int index) && index >= 0 && index < candidates.Count)
-            {
-                nint addr = candidates[index];
                 if (scanner.WriteMaxGrade(addr))
                 {
-                    Console.WriteLine($"Wrote 2610 -> grade @ 0x{(addr.ToInt64() + UserStructScanner.GradeOffset):X}");
-                }
-                else
-                {
-                    Console.WriteLine($"FAILED to write @ 0x{(addr.ToInt64() + UserStructScanner.GradeOffset):X}");
+                    ok++;
                 }
             }
-            else
-            {
-                Console.WriteLine("Invalid selection, nothing written.");
-            }
+            Console.WriteLine($" > done ({ok}/{candidates.Count})");
         }
 
         private static PatchFeature? GetFeatureByKey(string key) =>
@@ -347,8 +312,8 @@ namespace AyodanceID
         {
             Console.WriteLine("Usage:  AyodanceID.exe <PID> [--feature on|off ...]");
             Console.WriteLine();
-            Console.WriteLine("No feature args  = apply ALL patches (on).");
-            Console.WriteLine("--all on|off     = apply/restore every patch at once.");
+            Console.WriteLine("No feature args  = apply ALL patches + Max Grade (on).");
+            Console.WriteLine("--all on|off     = apply/restore every patch at once (on also runs Max Grade).");
             Console.WriteLine();
             Console.WriteLine("Features:");
             foreach (PatchFeature feature in Features)

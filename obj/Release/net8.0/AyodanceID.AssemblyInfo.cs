@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AyodanceID")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+18122bca5994afef56e3b36e68dd500371724394")]
 [assembly: System.Reflection.AssemblyProductAttribute("AyodanceID")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AyodanceID")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

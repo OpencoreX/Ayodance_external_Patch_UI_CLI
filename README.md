@@ -24,10 +24,11 @@ AyodanceID.exe 1234 --grade on           # scan User struct + เขียน Ma
 AyodanceID.exe --help
 ```
 
-- ใส่แค่ PID โดยไม่มี feature = apply ทุก patch
+- ใส่แค่ PID โดยไม่มี feature = apply ทุก patch + Max Grade
 - `on` = แทนที่ bytes original ด้วย bytes patch
 - `off` = เขียน bytes original กลับคืน
 - AOB scan เจอทุก address ที่ match → เขียนทั้งหมด (โดยเฉพาะ Autokey)
+- output ย่อ: `[Lock Perfect] progressing.... > done` (ไม่แสดง address)
 
 ### ตาราง Features
 
@@ -46,8 +47,8 @@ AyodanceID.exe --help
 รันโดยไม่ส่ง arg → ใส่ PID แล้วเลือก
 
 ```text
-Features to ENABLE (comma list, Enter = all): 1,3
-Features to RESTORE to original (prefix with !, e.g. !1,3): !6
+Features to ENABLE (comma list, Enter = all):   <-- Enter = 6 patches + Max Grade
+Features to RESTORE to original (prefix with !, e.g. !1,3):
 ```
 
 ## วิธีใช้จาก C#

@@ -93,7 +93,6 @@ namespace AyodanceID
         {
             var results = new List<nint>();
             byte[] buffer = new byte[64 * 1024 * 1024];
-            long totalRead = 0;
 
             foreach (MemoryRegion region in _mem.EnumerateRegions())
             {
@@ -109,8 +108,6 @@ namespace AyodanceID
                     int bytesRead = 0;
                     if (_mem.ReadBytes(chunkBase, buffer, chunk, out bytesRead))
                     {
-                        totalRead += bytesRead;
-
                         // align first probe to 4-byte boundary relative to window start
                         int first = (int)((long)Stride - ((long)chunkBase & (Stride - 1))) & (Stride - 1);
                         for (int i = first; i + WindowSize <= bytesRead; i += Stride)
@@ -139,7 +136,6 @@ namespace AyodanceID
                 }
             }
 
-            Console.WriteLine($"Scanned {totalRead / (1024 * 1024)} MB, {results.Count} candidate(s).");
             return results;
         }
 

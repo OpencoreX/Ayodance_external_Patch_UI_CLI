@@ -12,3 +12,4 @@ C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\refint\AyodanceID.dll
 C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.pdb
 C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.genruntimeconfig.cache
 C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\ref\AyodanceID.dll
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.sourcelink.json
