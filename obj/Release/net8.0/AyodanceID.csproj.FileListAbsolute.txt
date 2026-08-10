@@ -1,0 +1,14 @@
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\bin\Release\net8.0\AyodanceID.exe
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\bin\Release\net8.0\AyodanceID.deps.json
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\bin\Release\net8.0\AyodanceID.runtimeconfig.json
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\bin\Release\net8.0\AyodanceID.dll
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\bin\Release\net8.0\AyodanceID.pdb
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.AssemblyInfoInputs.cache
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.AssemblyInfo.cs
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.csproj.CoreCompileInputs.cache
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.dll
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\refint\AyodanceID.dll
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.pdb
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\AyodanceID.genruntimeconfig.cache
+C:\Users\KALIUNAI_PC\Desktop\AyodanceID\obj\Release\net8.0\ref\AyodanceID.dll
