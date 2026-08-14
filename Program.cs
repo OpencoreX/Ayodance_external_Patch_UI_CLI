@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace AyodanceID
@@ -53,8 +55,7 @@ namespace AyodanceID
 
         private static void Main(string[] args)
         {
-            Console.WriteLine("AyodanceID - Ayodance patch tool");
-            Console.WriteLine("===================================");
+            PrintBanner();
 
             if (args.Length == 0)
             {
@@ -68,10 +69,11 @@ namespace AyodanceID
                 return;
             }
 
-            (int? pid, Dictionary<string, bool> toggles) = ParseArgs(args);
+            (int? pid, string? processName, Dictionary<string, bool> toggles) = ParseArgs(args);
+            pid ??= ResolveProcessId(processName, interactive: false);
             if (pid is null)
             {
-                Console.WriteLine("ERROR: PID argument missing or invalid.");
+                Console.WriteLine("ERROR: PID invalid or process not found. Use <PID> or --process <name>.");
                 PrintUsage();
                 return;
             }
@@ -88,24 +90,18 @@ namespace AyodanceID
             {
                 using var mem = new MemoryReader(pid.Value);
                 var patcher = new GamePatcher(mem);
-                Console.WriteLine($"Connected to PID {pid.Value} (handle 0x{mem.Handle.ToInt64():X}).");
+                WriteAccent($"[LINK ONLINE] PID {pid.Value}  HANDLE 0x{mem.Handle.ToInt64():X}");
                 Console.WriteLine();
 
                 if (toggles.Count == 0)
                 {
                     Console.WriteLine("No feature args given -> applying ALL patches + Max Grade.");
-                    foreach (PatchFeature feature in Features)
-                    {
-                        Apply(patcher, feature, enable: true);
-                    }
+                    ApplyMany(patcher, Features, enable: true);
                     RunGrade(mem);
                 }
                 else if (toggles.TryGetValue("all", out bool allState))
                 {
-                    foreach (PatchFeature feature in Features)
-                    {
-                        Apply(patcher, feature, allState);
-                    }
+                    ApplyMany(patcher, Features, allState);
                     if (allState)
                     {
                         RunGrade(mem);
@@ -140,43 +136,63 @@ namespace AyodanceID
 
         private static void Apply(GamePatcher patcher, PatchFeature feature, bool enable)
         {
-            Console.Write($"[{feature.Name}] progressing....");
+            Console.Write($"  {feature.Name,-22} ");
             PatchReport report = patcher.Apply(feature, enable);
+            PrintReport(report, enable);
+        }
 
-            string status;
-            if (enable)
+        private static void ApplyMany(GamePatcher patcher, IReadOnlyList<PatchFeature> features, bool enable)
+        {
+            WriteAccent($"[FAST SCAN] {features.Count} modules / readable regions / single memory pass");
+            IReadOnlyList<PatchReport> reports = patcher.ApplyMany(features, enable, ShowScanProgress);
+            Console.WriteLine();
+            foreach (PatchReport report in reports)
             {
-                status = report.Failed > 0
-                    ? $"failed ({report.Failed})"
-                    : report.Applied == 0 && report.AlreadyDone == 0
-                        ? "not found"
-                        : "done";
+                Console.Write($"  {report.Feature.Name,-22} ");
+                PrintReport(report, enable);
             }
-            else
+        }
+
+        private static void ShowScanProgress(int completed, int total)
+        {
+            if (Console.IsOutputRedirected)
             {
-                status = report.Failed > 0
-                    ? $"failed ({report.Failed})"
-                    : report.Restored == 0 && report.AlreadyDone == 0
-                        ? "not found"
-                        : "done";
+                return;
             }
-            Console.WriteLine($" > {status}");
+
+            int percent = total == 0 ? 100 : completed * 100 / total;
+            int filled = percent / 5;
+            string bar = new string('█', filled).PadRight(20, '░');
+            Console.Write($"\r  SCAN [{bar}] {percent,3}%  regions {completed}/{total}");
+        }
+
+        private static void PrintReport(PatchReport report, bool enable)
+        {
+            string status = report.Failed > 0
+                ? $"FAILED ({report.Failed})"
+                : enable
+                    ? report.Applied == 0 && report.AlreadyDone == 0 ? "NOT FOUND" : "ONLINE"
+                    : report.Restored == 0 && report.AlreadyDone == 0 ? "NOT FOUND" : "RESTORED";
+            string detail = enable
+                ? $"{report.Applied} applied / {report.AlreadyDone} active"
+                : $"{report.Restored} restored / {report.AlreadyDone} original";
+            WriteStatus($"{status,-10} {detail}", report.Failed > 0 ? ConsoleColor.Red : ConsoleColor.Green);
         }
 
         private static void InteractiveRun()
         {
-            Console.Write("Game PID: ");
-            int pid;
-            while (!int.TryParse(Console.ReadLine(), out pid))
+            int? selectedPid = ResolveProcessId("Ld9BoxHeadless.exe", interactive: true);
+            if (selectedPid is null)
             {
-                Console.Write("Invalid PID, try again: ");
+                return;
             }
+            int pid = selectedPid.Value;
 
             try
             {
                 using var mem = new MemoryReader(pid);
                 var patcher = new GamePatcher(mem);
-                Console.WriteLine($"Connected to PID {pid} (handle 0x{mem.Handle.ToInt64():X}).");
+                WriteAccent($"[LINK ONLINE] PID {pid}  HANDLE 0x{mem.Handle.ToInt64():X}");
                 Console.WriteLine();
 
                 for (int i = 0; i < Features.Count; i++)
@@ -196,14 +212,30 @@ namespace AyodanceID
                     : ParseSelection(enableInput, Features.Count + 1);
                 List<int> disableSet = ParseSelection(disableInput, Features.Count + 1);
 
+                List<PatchFeature> enableFeatures = enableSet
+                    .Where(idx => idx < Features.Count)
+                    .Select(idx => Features[idx])
+                    .ToList();
+                if (enableFeatures.Count > 0)
+                {
+                    ApplyMany(patcher, enableFeatures, enable: true);
+                }
+
                 foreach (int idx in enableSet)
                 {
                     if (idx == Features.Count)
                     {
                         RunGrade(mem);
-                        continue;
                     }
-                    Apply(patcher, Features[idx], enable: true);
+                }
+
+                List<PatchFeature> disableFeatures = disableSet
+                    .Where(idx => idx < Features.Count)
+                    .Select(idx => Features[idx])
+                    .ToList();
+                if (disableFeatures.Count > 0)
+                {
+                    ApplyMany(patcher, disableFeatures, enable: false);
                 }
 
                 foreach (int idx in disableSet)
@@ -212,7 +244,6 @@ namespace AyodanceID
                     {
                         continue;
                     }
-                    Apply(patcher, Features[idx], enable: false);
                 }
             }
             catch (Exception ex)
@@ -245,7 +276,8 @@ namespace AyodanceID
             Console.Write("[Max Grade] progressing....");
             var scanner = new UserStructScanner(mem);
 
-            List<nint> candidates = scanner.Scan();
+            List<nint> candidates = scanner.Scan(ShowGradeProgress);
+            Console.WriteLine();
             if (candidates.Count == 0)
             {
                 Console.WriteLine(" > not found");
@@ -263,12 +295,26 @@ namespace AyodanceID
             Console.WriteLine($" > done ({ok}/{candidates.Count})");
         }
 
+        private static void ShowGradeProgress(int completed, int total)
+        {
+            if (Console.IsOutputRedirected)
+            {
+                return;
+            }
+
+            int percent = total == 0 ? 100 : completed * 100 / total;
+            int filled = percent / 5;
+            string bar = new string('█', filled).PadRight(20, '░');
+            Console.Write($"\r[Max Grade] SCAN [{bar}] {percent,3}%  regions {completed}/{total}");
+        }
+
         private static PatchFeature? GetFeatureByKey(string key) =>
             Features.FirstOrDefault(f => string.Equals(f.Key, key, StringComparison.OrdinalIgnoreCase));
 
-        private static (int? pid, Dictionary<string, bool> toggles) ParseArgs(string[] args)
+        private static (int? pid, string? processName, Dictionary<string, bool> toggles) ParseArgs(string[] args)
         {
             int? pid = null;
+            string? processName = null;
             var toggles = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
             for (int i = 0; i < args.Length; i++)
@@ -291,7 +337,14 @@ namespace AyodanceID
                     {
                         value = "on";
                     }
-                    toggles[key] = ParseBool(value);
+                    if (key is "process" or "name")
+                    {
+                        processName = value;
+                    }
+                    else
+                    {
+                        toggles[key] = ParseBool(value);
+                    }
                 }
                 else if (int.TryParse(token, out int p))
                 {
@@ -299,7 +352,76 @@ namespace AyodanceID
                 }
             }
 
-            return (pid, toggles);
+            return (pid, processName, toggles);
+        }
+
+        private static int? ResolveProcessId(string? requestedName, bool interactive)
+        {
+            string processName = requestedName ?? string.Empty;
+
+            processName = Path.GetFileNameWithoutExtension(processName.Trim());
+            if (processName.Length == 0)
+            {
+                WriteStatus("ERROR: process name is empty.", ConsoleColor.Red);
+                return null;
+            }
+
+            List<(int Id, string Name)> matches = Process.GetProcessesByName(processName)
+                .Select(process =>
+                {
+                    using (process)
+                    {
+                        return (process.Id, process.ProcessName);
+                    }
+                })
+                .OrderBy(match => match.Id)
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                WriteStatus($"ERROR: process '{processName}.exe' not found.", ConsoleColor.Red);
+                return null;
+            }
+
+            if (matches.Count == 1)
+            {
+                return matches[0].Id;
+            }
+
+            if (!interactive)
+            {
+                WriteStatus($"ERROR: found {matches.Count} processes named '{processName}.exe'; specify a PID.", ConsoleColor.Red);
+                foreach ((int id, string name) in matches)
+                {
+                    Console.WriteLine($"  PID {id}  {name}.exe");
+                }
+                return null;
+            }
+
+            WriteAccent($"[TARGETS] {matches.Count} matching processes");
+            for (int i = 0; i < matches.Count; i++)
+            {
+                Console.WriteLine($"  [{i + 1}] PID {matches[i].Id}  {matches[i].Name}.exe");
+            }
+
+            while (true)
+            {
+                Console.Write("Select target number or PID: ");
+                string? input = Console.ReadLine()?.Trim();
+                if (int.TryParse(input, out int selection))
+                {
+                    if (selection >= 1 && selection <= matches.Count)
+                    {
+                        return matches[selection - 1].Id;
+                    }
+
+                    if (matches.Any(match => match.Id == selection))
+                    {
+                        return selection;
+                    }
+                }
+                WriteStatus("Invalid selection.", ConsoleColor.Red);
+            }
         }
 
         private static bool ParseBool(string value) =>
@@ -311,9 +433,11 @@ namespace AyodanceID
         private static void PrintUsage()
         {
             Console.WriteLine("Usage:  AyodanceID.exe <PID> [--feature on|off ...]");
+            Console.WriteLine("        AyodanceID.exe --process Ld9BoxHeadless.exe [--feature on|off ...]");
             Console.WriteLine();
             Console.WriteLine("No feature args  = apply ALL patches + Max Grade (on).");
             Console.WriteLine("--all on|off     = apply/restore every patch at once (on also runs Max Grade).");
+            Console.WriteLine("--process NAME  = resolve PID by process name (--name is an alias).");
             Console.WriteLine();
             Console.WriteLine("Features:");
             foreach (PatchFeature feature in Features)
@@ -327,6 +451,33 @@ namespace AyodanceID
             Console.WriteLine("  AyodanceID.exe 1234");
             Console.WriteLine("  AyodanceID.exe 1234 --lockperfect on --autokey off");
             Console.WriteLine("  AyodanceID.exe 1234 --all off");
+        }
+
+        private static void PrintBanner()
+        {
+            WriteAccent("╔══════════════════════════════════════════════════════════╗");
+            WriteAccent("║  AYODANCE // MEMORY PATCH CONSOLE       v2.0 FAST SCAN  ║");
+            WriteAccent("║  SIGNAL: READY     MODE: SAFE RESTORE     CORE: ONLINE  ║");
+            WriteAccent("╚══════════════════════════════════════════════════════════╝");
+        }
+
+        private static void WriteAccent(string text)
+        {
+            WriteStatus(text, ConsoleColor.Cyan);
+        }
+
+        private static void WriteStatus(string text, ConsoleColor color)
+        {
+            if (Console.IsOutputRedirected)
+            {
+                Console.WriteLine(text);
+                return;
+            }
+
+            ConsoleColor previous = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            Console.WriteLine(text);
+            Console.ForegroundColor = previous;
         }
     }
 }

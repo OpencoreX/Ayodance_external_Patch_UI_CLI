@@ -19,7 +19,7 @@ namespace AyodanceID
     /// </summary>
     public sealed class GamePatcher
     {
-        private const int BufferSize = 4 * 1024 * 1024;
+        private const int BufferSize = 64 * 1024 * 1024;
         private readonly MemoryReader _mem;
 
         public GamePatcher(MemoryReader mem)
@@ -97,49 +97,143 @@ namespace AyodanceID
             return true;
         }
 
+        private static void ScanPattern(byte[] buffer, int length, nint baseAddress, byte[] pattern, List<nint> hits)
+        {
+            if (pattern.Length == 0 || pattern.Length > length)
+            {
+                return;
+            }
+
+            ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
+            int searchOffset = 0;
+            while (searchOffset <= length - pattern.Length)
+            {
+                int relativeOffset = data[searchOffset..].IndexOf(pattern[0]);
+                if (relativeOffset < 0)
+                {
+                    break;
+                }
+
+                int matchOffset = searchOffset + relativeOffset;
+                if (Matches(buffer, matchOffset, pattern))
+                {
+                    hits.Add((nint)((long)baseAddress + matchOffset));
+                }
+                searchOffset = matchOffset + 1;
+            }
+        }
+
         /// <summary>
         /// enable=true  -> find original bytes, write the patched bytes.
         /// enable=false -> find patched bytes, restore the original bytes.
         /// </summary>
         public PatchReport Apply(PatchFeature feature, bool enable)
         {
-            var report = new PatchReport { Feature = feature };
-            (List<nint> originalHits, List<nint> patchedHits) = FindPatterns(feature.Original, feature.Patched);
+            return ApplyMany(new[] { feature }, enable)[0];
+        }
 
-            if (enable)
+        /// <summary>
+        /// Applies multiple features after one pass over the target process memory.
+        /// This avoids reading every region once per feature when enabling the full set.
+        /// </summary>
+        public IReadOnlyList<PatchReport> ApplyMany(
+            IReadOnlyList<PatchFeature> features,
+            bool enable,
+            Action<int, int>? progress = null)
+        {
+            if (features is null || features.Count == 0)
             {
-                report.AlreadyDone = patchedHits.Count;
-                foreach (nint addr in originalHits)
+                return Array.Empty<PatchReport>();
+            }
+
+            var hits = new Dictionary<PatchFeature, (List<nint> Original, List<nint> Patched)>();
+            foreach (PatchFeature feature in features)
+            {
+                hits[feature] = (new List<nint>(), new List<nint>());
+            }
+
+            byte[] buffer = new byte[BufferSize];
+            int maxPatternLength = features.Max(feature => Math.Max(feature.Original.Length, feature.Patched.Length));
+            List<MemoryRegion> regions = _mem.EnumerateReadableRegions().ToList();
+
+            for (int regionIndex = 0; regionIndex < regions.Count; regionIndex++)
+            {
+                MemoryRegion region = regions[regionIndex];
+                progress?.Invoke(regionIndex, regions.Count);
+
+                long offset = 0;
+                while (offset < region.RegionSize)
                 {
-                    if (_mem.ProtectedWrite(addr, feature.Patched))
+                    int chunk = (int)Math.Min(buffer.Length, region.RegionSize - offset);
+                    nint chunkBase = (nint)((long)region.BaseAddress + offset);
+
+                    if (!_mem.ReadBytes(chunkBase, buffer, chunk, out int bytesRead) || bytesRead <= 0)
+                    {
+                        break;
+                    }
+
+                    foreach (PatchFeature feature in features)
+                    {
+                        var featureHits = hits[feature];
+                        ScanPattern(buffer, bytesRead, chunkBase, feature.Original, featureHits.Original);
+                        ScanPattern(buffer, bytesRead, chunkBase, feature.Patched, featureHits.Patched);
+                    }
+
+                    if (bytesRead < chunk)
+                    {
+                        break;
+                    }
+
+                    long advance = bytesRead - (maxPatternLength - 1);
+                    offset += Math.Max(advance, 1);
+                }
+            }
+            progress?.Invoke(regions.Count, regions.Count);
+
+            var reports = new List<PatchReport>(features.Count);
+            foreach (PatchFeature feature in features)
+            {
+                var report = new PatchReport { Feature = feature };
+                (List<nint> originalHits, List<nint> patchedHits) = hits[feature];
+
+                if (enable)
+                {
+                    report.AlreadyDone = patchedHits.Count;
+                    WriteMatches(report, originalHits, feature.Patched, apply: true);
+                }
+                else
+                {
+                    report.AlreadyDone = originalHits.Count;
+                    WriteMatches(report, patchedHits, feature.Original, apply: false);
+                }
+
+                reports.Add(report);
+            }
+
+            return reports;
+        }
+
+        private void WriteMatches(PatchReport report, IEnumerable<nint> addresses, byte[] data, bool apply)
+        {
+            foreach (nint address in addresses)
+            {
+                if (_mem.ProtectedWrite(address, data))
+                {
+                    if (apply)
                     {
                         report.Applied++;
-                        report.Addresses.Add(addr);
                     }
                     else
-                    {
-                        report.Failed++;
-                    }
-                }
-            }
-            else
-            {
-                report.AlreadyDone = originalHits.Count;
-                foreach (nint addr in patchedHits)
-                {
-                    if (_mem.ProtectedWrite(addr, feature.Original))
                     {
                         report.Restored++;
-                        report.Addresses.Add(addr);
                     }
-                    else
-                    {
-                        report.Failed++;
-                    }
+                    report.Addresses.Add(address);
+                }
+                else
+                {
+                    report.Failed++;
                 }
             }
-
-            return report;
         }
     }
 }

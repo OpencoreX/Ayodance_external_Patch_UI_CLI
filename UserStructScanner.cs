@@ -11,6 +11,7 @@ namespace AyodanceID
     /// </summary>
     public sealed class UserStructScanner
     {
+        private const int ScanChunkSize = 64 * 1024 * 1024;
         public const int WindowSize = 192;
         public const int Stride = 4;
         public const int GradeOffset = 64;      // User.grade
@@ -89,15 +90,18 @@ namespace AyodanceID
         /// Pre-scan all MEM_PRIVATE + writable regions and return every
         /// candidate address that matches the User-struct heuristic.
         /// </summary>
-        public List<nint> Scan()
+        public List<nint> Scan(Action<int, int>? progress = null)
         {
             var results = new List<nint>();
-            byte[] buffer = new byte[64 * 1024 * 1024];
+            byte[] buffer = new byte[ScanChunkSize];
+            List<MemoryRegion> regions = _mem.EnumerateRegions()
+                .Where(region => region.Type == MemoryReader.MEM_PRIVATE && (region.Protect & 0x4C) != 0)
+                .ToList();
 
-            foreach (MemoryRegion region in _mem.EnumerateRegions())
+            for (int regionIndex = 0; regionIndex < regions.Count; regionIndex++)
             {
-                if (region.Type != MemoryReader.MEM_PRIVATE) continue;
-                if ((region.Protect & 0x4C) == 0) continue;
+                MemoryRegion region = regions[regionIndex];
+                progress?.Invoke(regionIndex, regions.Count);
 
                 long offset = 0;
                 while (offset < region.RegionSize)
@@ -135,6 +139,7 @@ namespace AyodanceID
                     offset += advance;
                 }
             }
+            progress?.Invoke(regions.Count, regions.Count);
 
             return results;
         }

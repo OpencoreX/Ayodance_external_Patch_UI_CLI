@@ -4,6 +4,11 @@
 `OpenProcess` / `ReadProcessMemory` / `WriteProcessMemory` พร้อม `VirtualProtectEx`
 เพื่อเขียนลง code page ที่กันการเขียน
 
+หน้าจอคอนโซลใช้ธีม sci-fi และแสดงสถานะการเชื่อมต่อ/ผลลัพธ์เป็นสีเมื่อ terminal รองรับ
+การเปิดหลาย feature พร้อมกันใช้ FAST SCAN: อ่าน readable regions เพียงรอบเดียว
+โดยแบ่งการอ่านเป็น chunk ละ 64 MB ไม่โหลด memory ทั้งหมดพร้อมกัน
+แล้วตรวจทุก pattern ร่วมกัน จึงเร็วกว่าโหมดเดิมที่สแกนซ้ำทีละ feature
+
 ## Build
 
 ```powershell
@@ -21,14 +26,18 @@ AyodanceID.exe 1234                      # ตัวอย่าง
 AyodanceID.exe 1234 --lockperfect on --autokey off
 AyodanceID.exe 1234 --all off            # คืนค่า original ทั้งหมด
 AyodanceID.exe 1234 --grade on           # scan User struct + เขียน Max Grade 2610
+AyodanceID.exe --process Ld9BoxHeadless.exe --all on
 AyodanceID.exe --help
 ```
 
+- `--process NAME` หรือ `--name NAME` ค้นหา PID อัตโนมัติ (ใส่หรือไม่ใส่ `.exe` ก็ได้)
+- ถ้าพบหลาย process ใน CLI จะหยุดและแสดง PID ทั้งหมด เพื่อให้เลือกแบบชัดเจน
+- Interactive mode จะแสดงเฉพาะ `Ld9BoxHeadless.exe` พร้อมเลขลำดับ/PID ให้เลือก
 - ใส่แค่ PID โดยไม่มี feature = apply ทุก patch + Max Grade
 - `on` = แทนที่ bytes original ด้วย bytes patch
 - `off` = เขียน bytes original กลับคืน
 - AOB scan เจอทุก address ที่ match → เขียนทั้งหมด (โดยเฉพาะ Autokey)
-- output ย่อ: `[Lock Perfect] progressing.... > done` (ไม่แสดง address)
+- output แสดงสถานะ `FAST SCAN`, จำนวนที่ apply/restore และจำนวนที่ทำงานอยู่ (ไม่แสดง address)
 
 ### ตาราง Features
 
@@ -44,9 +53,13 @@ AyodanceID.exe --help
 
 ### Interactive Mode
 
-รันโดยไม่ส่ง arg → ใส่ PID แล้วเลือก
+รันโดยไม่ส่ง arg → แสดง `Ld9BoxHeadless.exe` แล้วเลือก PID
 
 ```text
+[TARGETS] 2 matching processes
+  [1] PID 1234  Ld9BoxHeadless.exe
+  [2] PID 5678  Ld9BoxHeadless.exe
+Select process number or PID:
 Features to ENABLE (comma list, Enter = all):   <-- Enter = 6 patches + Max Grade
 Features to RESTORE to original (prefix with !, e.g. !1,3):
 ```
